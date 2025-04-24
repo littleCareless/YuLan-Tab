@@ -1,44 +1,71 @@
 import { useState, useEffect } from 'react';
-import './App.css';
+import './style.css';
+
+type TriggerMode = 'alt-hover' | 'alt-click' | 'long-press' | 'drag';
+
+interface TriggerOption {
+  mode: TriggerMode;
+  label: string;
+  description: string;
+}
+
+const triggerOptions: TriggerOption[] = [
+  {
+    mode: 'alt-hover',
+    label: 'Alt + 悬停',
+    description: '按住 Alt 键并将鼠标悬停在链接上'
+  },
+  {
+    mode: 'alt-click',
+    label: 'Alt + 点击',
+    description: '按住 Alt 键并点击链接'
+  },
+  {
+    mode: 'long-press',
+    label: '长按链接',
+    description: '按住链接 0.5 秒'
+  },
+  {
+    mode: 'drag',
+    label: '拖动链接',
+    description: '轻微拖动链接即可预览'
+  }
+];
 
 function App() {
-  const [previewEnabled, setPreviewEnabled] = useState(false);
-  const [shortcut, setShortcut] = useState('Alt + 点击链接');
+  const [triggerMode, setTriggerMode] = useState<TriggerMode>('alt-click');
+  const [isLoading, setIsLoading] = useState(true);
 
-  // 获取当前预览模式状态
+  // 获取当前触发方式
   useEffect(() => {
-    // 向后台脚本发送消息获取当前状态
-    browser.runtime.sendMessage({ action: 'get-preview-status' })
+    browser.runtime.sendMessage({ action: 'get-trigger-mode' })
       .then(response => {
-        if (response && typeof response.enabled === 'boolean') {
-          setPreviewEnabled(response.enabled);
+        if (response && response.mode) {
+          setTriggerMode(response.mode);
         }
       })
-      .catch(error => console.error('获取状态失败:', error));
+      .catch(error => console.error('获取触发方式失败:', error))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  // 切换预览模式
-  const togglePreviewMode = () => {
-    const newState = !previewEnabled;
-    setPreviewEnabled(newState);
+  // 更新触发方式
+  const handleTriggerModeChange = (mode: TriggerMode) => {
+    setTriggerMode(mode);
     
-    // 向后台脚本发送切换命令
+    // 向后台脚本发送更新命令
     browser.runtime.sendMessage({
-      action: 'toggle-preview-mode',
-      enabled: newState
-    }).catch(error => console.error('发送命令失败:', error));
+      action: 'update-trigger-mode',
+      mode: mode
+    }).catch(error => console.error('更新触发方式失败:', error));
   };
 
-  // 打开快捷键设置页面
-  const openShortcutSettings = () => {
-    browser.tabs.create({
-      url: 'chrome://extensions/shortcuts'
-    }).catch(error => {
-      // 如果无法直接打开快捷键设置页面，则打开扩展管理页面
-      browser.tabs.create({ url: 'chrome://extensions' })
-        .catch(e => console.error('打开扩展页面失败:', e));
-    });
-  };
+  if (isLoading) {
+    return (
+      <div className="popup-container loading">
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
 
   return (
     <div className="popup-container">
@@ -47,44 +74,40 @@ function App() {
       </header>
       
       <main className="popup-content">
-        <div className="toggle-section">
-          <span>预览模式</span>
-          <label className="toggle-switch">
-            <input 
-              type="checkbox" 
-              checked={previewEnabled}
-              onChange={togglePreviewMode}
-            />
-            <span className="toggle-slider"></span>
-          </label>
-        </div>
-        
-        <div className="shortcut-section">
-          <div className="shortcut-info">
-            <span>快捷键</span>
-            <div className="shortcut-display">{shortcut}</div>
+        <div className="trigger-section">
+          <span>选择触发方式</span>
+          <div className="trigger-options">
+            {triggerOptions.map(({ mode, label, description }) => (
+              <label key={mode} className="trigger-option">
+                <input
+                  type="radio"
+                  name="triggerMode"
+                  value={mode}
+                  checked={triggerMode === mode}
+                  onChange={() => handleTriggerModeChange(mode)}
+                />
+                <div className="trigger-option-content">
+                  <span className="trigger-option-label">{label}</span>
+                  <span className="trigger-option-description">{description}</span>
+                </div>
+              </label>
+            ))}
           </div>
-          <button 
-            className="shortcut-button"
-            onClick={openShortcutSettings}
-          >
-            修改
-          </button>
         </div>
         
         <div className="info-section">
-          <p>使用说明:</p>
+          <p>使用提示</p>
           <ol>
-            <li>启用预览模式</li>
-            <li>按住 Alt 键并点击网页链接</li>
-            <li>链接内容将在弹窗中预览</li>
-            <li>按 ESC 键关闭预览窗口</li>
+            <li>选择你喜欢的触发方式来预览链接</li>
+            <li>预览窗口支持拖拽移动和调整大小</li>
+            <li>按 ESC 键可以快速关闭预览窗口</li>
+            <li>支持绝大多数网站的预览功能</li>
           </ol>
         </div>
       </main>
       
       <footer className="popup-footer">
-        <p>© 2025 链接预览助手</p>
+        <p>© 2024 链接预览助手 - 让浏览更轻松</p>
       </footer>
     </div>
   );

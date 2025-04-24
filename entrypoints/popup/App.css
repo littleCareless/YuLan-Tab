@@ -213,3 +213,121 @@ input:checked + .toggle-slider:before {
 .popup-container {
   animation: fadeIn 0.3s ease-in-out;
 }
+
+.trigger-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.trigger-option-label {
+  font-weight: 500;
+  color: var(--gray-900);
+}
+
+.trigger-option-description {
+  font-size: 0.75rem;
+  color: var(--gray-500);
+}
+
+@media (prefers-color-scheme: dark) {
+  .trigger-option-label {
+    color: var(--gray-100);
+  }
+
+  .trigger-option-description {
+    color: var(--gray-400);
+  }
+}
+
+/* Loading Spinner */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 480px;
+}
+
+.loading-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--gray-200);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spinner 0.6s linear infinite;
+}
+
+@keyframes spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Animations */
+.popup-container {
+  animation: slideIn 0.3s ease-out;
+}
+
+.trigger-option {
+  animation: fadeIn 0.3s ease-out;
+  animation-fill-mode: both;
+}
+
+.trigger-option:nth-child(1) { animation-delay: 0.1s; }
+.trigger-option:nth-child(2) { animation-delay: 0.2s; }
+.trigger-option:nth-child(3) { animation-delay: 0.3s; }
+.trigger-option:nth-child(4) { animation-delay: 0.4s; }
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Hover Effects */
+.trigger-option:hover .trigger-option-label {
+  color: var(--primary);
+}
+
+.trigger-option:hover .trigger-option-description {
+  color: var(--primary-light);
+}
+
+/* Focus Styles */
+.trigger-option:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Responsive Design */
+@media (max-width: 400px) {
+  .popup-container {
+    width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .popup-container {
+    width: 100%;
+    box-shadow: none;
+  }
+}
