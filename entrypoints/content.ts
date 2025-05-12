@@ -7,21 +7,49 @@ export default defineContentScript({
     const originalClickHandlers = new WeakMap()
     // 当前预览窗口元素
     let previewContainer: HTMLElement | null = null
-    // 当前触发方式
-    let currentTriggerMode: 'alt-hover' | 'alt-click' | 'long-press' | 'drag' = 'alt-click'
+    // 当前触发方式 - 更新类型以包含所有模式
+    let currentTriggerMode: 'alt-hover' | 'alt-click' | 'long-press' | 'drag' | 'hover' | 'disabled' = 'alt-click'
     // 长按计时器
     let longPressTimer: number | null = null
+    // 悬停预览计时器
+    let hoverPreviewTimer: number | null = null
     // 拖动起始位置
     let dragStartX = 0
     let dragStartY = 0
+
+    /**
+     * @description 请求并设置初始触发模式
+     */
+    function initializeSettings() {
+      browser.runtime.sendMessage({ action: 'get-settings' })
+        .then(settings => {
+          if (settings && settings.triggerMode) {
+            currentTriggerMode = settings.triggerMode
+            console.log(`内容脚本：初始触发方式已设置为: ${currentTriggerMode}`)
+          }
+        })
+        .catch(error => {
+          console.error('内容脚本：获取初始设置失败:', error)
+          // 保留默认的 'alt-click' 或其他回退逻辑
+        })
+    }
+
+    // 初始化设置
+    initializeSettings()
 
     // 监听来自后台脚本的消息
     browser.runtime.onMessage.addListener((message) => {
       if (message.action === 'update-trigger-mode') {
         currentTriggerMode = message.mode
-        console.log(`触发方式已更新: ${currentTriggerMode}`)
+        console.log(`内容脚本：触发方式已更新为: ${currentTriggerMode}`)
 
-        // 关闭当前预览窗口
+        // 清除悬停计时器
+        if (hoverPreviewTimer) {
+          clearTimeout(hoverPreviewTimer)
+          hoverPreviewTimer = null
+        }
+
+        // 关闭当前预览窗口，因为触发方式已更改
         if (previewContainer) {
           closePreview()
         }
@@ -37,33 +65,81 @@ export default defineContentScript({
     document.addEventListener('mousemove', handleMouseMove, true)
     document.addEventListener('keydown', handleKeyDown)
 
-    // 处理鼠标悬停事件
+    // 添加Alt键状态监听
+    let altKeyPressed = false
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Alt') {
+        altKeyPressed = true
+      }
+    })
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'Alt') {
+        altKeyPressed = false
+      }
+    })
+    // 当窗口失去焦点时重置Alt键状态
+    window.addEventListener('blur', () => {
+      altKeyPressed = false
+    })
+
+    /**
+     * @description 处理鼠标悬停事件，支持 'alt-hover' 和 'hover' 模式
+     * @param {MouseEvent} event - 鼠标事件对象
+     */
     function handleMouseOver(event: MouseEvent) {
-      if (currentTriggerMode !== 'alt-hover') return
-      if (!event.altKey) return
+      if (currentTriggerMode === 'disabled') return
 
       const linkElement = findLinkElement(event.target as HTMLElement)
       if (!linkElement) return
 
-      // 创建预览窗口
-      createPreview(linkElement.href)
+      if (currentTriggerMode === 'alt-hover') {
+        // 检查Alt键是否被按下，使用event.altKey和全局altKeyPressed变量双重检查
+        if (event.altKey || altKeyPressed) {
+          createPreview(linkElement.href)
+        }
+      } else if (currentTriggerMode === 'hover') {
+        // 对于 'hover' 模式，清除可能存在的旧计时器
+        if (hoverPreviewTimer) {
+          clearTimeout(hoverPreviewTimer)
+        }
+        // 考虑添加延迟以避免过于敏感的预览
+        hoverPreviewTimer = window.setTimeout(() => {
+          createPreview(linkElement.href)
+          hoverPreviewTimer = null // 清除计时器ID，表示已执行
+        }, 300) // 300毫秒延迟
+      }
     }
 
-    // 处理鼠标移出事件
+    /**
+     * @description 处理鼠标移出事件，支持 'alt-hover' 和 'hover' 模式
+     * @param {MouseEvent} event - 鼠标事件对象
+     */
     function handleMouseOut(event: MouseEvent) {
-      if (currentTriggerMode !== 'alt-hover') return
-      if (!event.altKey) return
+      if (currentTriggerMode === 'disabled') return
 
-      const linkElement = findLinkElement(event.target as HTMLElement)
-      if (!linkElement) return
+      // 清除悬停预览计时器
+      if (hoverPreviewTimer) {
+        clearTimeout(hoverPreviewTimer)
+        hoverPreviewTimer = null
+      }
 
-      // 关闭预览窗口
-      closePreview()
+      // 仅当是由悬停模式打开时关闭预览
+      if (currentTriggerMode === 'alt-hover' || currentTriggerMode === 'hover') {
+        // 检查鼠标是否移到了预览窗口自身，如果是则不关闭 (简化处理，暂不实现此逻辑)
+        // const relatedTarget = event.relatedTarget as HTMLElement | null;
+        // if (previewContainer && previewContainer.contains(relatedTarget)) {
+        //   return;
+        // }
+        closePreview()
+      }
     }
 
-    // 处理点击事件
+    /**
+     * @description 处理点击事件，支持 'alt-click' 模式
+     * @param {MouseEvent} event - 鼠标事件对象
+     */
     function handleClick(event: MouseEvent) {
-      if (currentTriggerMode !== 'alt-click') return
+      if (currentTriggerMode === 'disabled' || currentTriggerMode !== 'alt-click') return
       if (!event.altKey) return
 
       const linkElement = findLinkElement(event.target as HTMLElement)
@@ -83,12 +159,15 @@ export default defineContentScript({
       if (!linkElement) return
 
       if (currentTriggerMode === 'long-press') {
+        // 阻止默认行为，防止链接被立即打开
+        event.preventDefault()
         // 开始长按计时
         longPressTimer = window.setTimeout(() => {
-          event.preventDefault()
           createPreview(linkElement.href)
         }, 500)
       } else if (currentTriggerMode === 'drag') {
+        // 阻止默认行为，防止链接被立即打开
+        event.preventDefault()
         // 记录拖动起始位置
         dragStartX = event.clientX
         dragStartY = event.clientY
@@ -106,7 +185,11 @@ export default defineContentScript({
 
     // 处理鼠标移动事件
     function handleMouseMove(event: MouseEvent) {
+      if (currentTriggerMode === 'disabled') return
       if (currentTriggerMode !== 'drag') return
+
+      // 只有当鼠标按下时才处理拖动
+      if (event.buttons === 0) return
 
       const linkElement = findLinkElement(event.target as HTMLElement)
       if (!linkElement) return
@@ -117,7 +200,7 @@ export default defineContentScript({
       const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
 
       // 如果拖动距离超过阈值，创建预览窗口
-      if (distance > 30) {
+      if (distance > 60) { // 进一步降低阈值，使拖动更容易触发
         event.preventDefault()
         createPreview(linkElement.href)
       }
@@ -125,7 +208,7 @@ export default defineContentScript({
 
     // 处理键盘事件
     function handleKeyDown(event: KeyboardEvent) {
-      // 按 ESC 键关闭预览窗口
+      // 按 ESC 键关闭预览窗口，无论触发模式如何
       if (event.key === 'Escape' && previewContainer) {
         closePreview()
       }
@@ -144,6 +227,7 @@ export default defineContentScript({
 
     // 创建预览窗口
     function createPreview(url: string) {
+      if (currentTriggerMode === 'disabled') return // 双重检查
       // 关闭已存在的预览窗口
       if (previewContainer) {
         closePreview()
